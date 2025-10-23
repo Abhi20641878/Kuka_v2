@@ -82,8 +82,7 @@ class UIBuilder:
 
     def _on_init(self):
         self._articulation = None
-        self._cuboid = None
-        self._cubes = []
+        self._cubes = []  # Changed: Now stores all cubes
         self._table = None
         self._scenario = ExampleScenario()
         self._world = None
@@ -97,15 +96,15 @@ class UIBuilder:
     def _on_load_world(self):
         """Custom load function that properly manages World creation"""
         print("\n" + "="*50)
-        print("Loading KUKA Pick and Place Scenario...")
+        print("Loading KUKA Multi-Cube Pick and Place Scenario...")
         print("="*50)
         
-        # CRITICAL: Stop timeline first
+        # Stop timeline first
         if self._timeline.is_playing():
             print("Stopping timeline...")
             self._timeline.stop()
         
-        # CRITICAL: Clear World singleton - this is the key fix
+        # Clear World singleton
         print("Clearing World singleton...")
         try:
             World.clear_instance()
@@ -115,7 +114,7 @@ class UIBuilder:
         # Reset internal state
         self._on_init()
         
-        # Step 1: Create new stage and load assets
+        # Create new stage and load assets
         print("Creating new stage...")
         create_new_stage()
         self._add_light_to_stage()
@@ -127,81 +126,75 @@ class UIBuilder:
         print(f"Loading robot from: {path_to_robot_usd}")
         add_reference_to_stage(path_to_robot_usd, robot_prim_path)
         
-        # ============================================================
-        # LOAD YOUR TABLE USD FILE HERE
-        # ============================================================
+        # Load table with cubes
         print("Loading table with cubes...")
-        
-        # CHANGE THIS PATH TO YOUR TABLE USD FILE:
         table_usd_path = "D:/Ext/table_1.usd"
         table_prim_path = "/Scenario/TableWithCubes"
         
-        # Load the table USD file
         add_reference_to_stage(table_usd_path, table_prim_path)
         print(f"✓ Successfully loaded table from: {table_usd_path}")
             
         # Create XFormPrim wrapper for the table
         self._table = XFormPrim(
             f"{table_prim_path}/Default",
-            "table_main"  # Give it a unique name
+            "table_main"
         )
         print(f"✓ Created table prim wrapper")
             
-        # Get the cube prims from your USD file
+        # Get ALL cube prims from your USD file
         self._cubes = []
         cube_names = ["Pickup_A", "Pickup_B", "Pickup_C", "Pickup_D"]
             
         for i, cube_name in enumerate(cube_names):
             try:
-                # Adjust this path based on your USD hierarchy
                 cube_prim_path = f"{table_prim_path}/Default/Cubes/{cube_name}"
                 cube_prim = XFormPrim(
                     cube_prim_path,
-                    f"cube_{i}"  # Give each cube a unique name
+                    f"cube_{i}"
                 )
                 self._cubes.append(cube_prim)
                 print(f"  ✓ Found cube: {cube_name} at {cube_prim_path}")
             except Exception as e:
                 print(f"  ⚠ Could not find cube {cube_name}: {e}")
-            
-        # Use the first cube for the scenario
-        if len(self._cubes) > 0:
-            self._cuboid = self._cubes[0]
-            print(f"✓ Using {len(self._cubes)} cubes from USD file")
-        else:
+        
+        # Verify we have cubes
+        if len(self._cubes) == 0:
             raise Exception("No cubes found in USD file")
+        
+        print(f"✓ Loaded {len(self._cubes)} cubes for pick and place")
 
-        # Create articulation wrapper with UNIQUE NAME
+        # Create articulation wrapper
         print("Creating articulation wrapper...")
         self._articulation = SingleArticulation(robot_prim_path, name="kuka_robot")
 
-        # Step 2: Create World with physics settings
+        # Create World with physics settings
         print("Creating World...")
         self._world = World(physics_dt=1/60.0, rendering_dt=1/60.0)
         
-        # Step 3: Add objects to world
+        # Add objects to world
         print("Adding objects to World scene...")
         
         try:
             self._world.scene.add(self._articulation)
             
-            # Only add table if it was successfully created
             if self._table is not None:
                 self._world.scene.add(self._table)
             
+            # Add ALL cubes to the scene
             for i, cube in enumerate(self._cubes):
                 self._world.scene.add(cube)
+                print(f"  ✓ Added cube {i} to scene")
                 
         except Exception as e:
             print(f"Error adding objects to scene: {e}")
             raise
         
-        # Step 4: Initialize world (this calls reset internally)
+        # Initialize world
         print("Initializing World...")
         self._world.reset()
         
-        # Step 5: Setup scenario
-        print("Setting up scenario...")
+        # Setup scenario with ALL cubes
+        print("Setting up multi-cube scenario...")
         self._reset_scenario()
         
         # Enable UI
@@ -210,8 +203,9 @@ class UIBuilder:
         self._enable_reset_button(True)
         
         print("\n" + "="*50)
-        print("✓ KUKA Pick and Place Ready!")
+        print("✓ KUKA Multi-Cube Pick and Place Ready!")
         print(f"✓ Loaded 1 table and {len(self._cubes)} cubes")
+        print("✓ Robot will pick and place all cubes sequentially")
         print("✓ Click RUN to start the scenario")
         print("="*50 + "\n")
 
@@ -240,18 +234,20 @@ class UIBuilder:
             self._reset_button.enabled = enabled
 
     def _reset_scenario(self):
-        if self._articulation is None or self._cuboid is None:
+        """Setup scenario with all cubes"""
+        if self._articulation is None or len(self._cubes) == 0:
             print("Warning: Cannot reset scenario - objects not loaded")
             return
-            
+        
         self._scenario.teardown_scenario()
-        self._scenario.setup_scenario(self._articulation, self._cuboid)
+        # CRITICAL CHANGE: Pass all cubes instead of just one
+        self._scenario.setup_scenario(self._articulation, self._cubes)
 
     def _update_scenario(self, step: float):
         self._scenario.update_scenario(step)
 
     def _on_run_scenario_a_text(self):
-        print("\n>>> Starting Pick and Place <<<\n")
+        print("\n>>> Starting Multi-Cube Pick and Place <<<\n")
         self._timeline.play()
 
     def _on_run_scenario_b_text(self):
